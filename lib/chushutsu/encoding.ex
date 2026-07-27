@@ -23,7 +23,10 @@ defmodule Chushutsu.Encoding do
   """
   @spec decode(binary) :: String.t()
   def decode(bytes) when is_binary(bytes) do
-    if String.valid?(bytes), do: bytes, else: transcode(bytes, detect(bytes))
+    # :fast_ascii scans ASCII runs a word at a time and only falls back to the
+    # per-code-point check on non-ASCII. Pages are overwhelmingly ASCII markup,
+    # and this validates the whole document on every extraction.
+    if String.valid?(bytes, :fast_ascii), do: bytes, else: transcode(bytes, detect(bytes))
   end
 
   @doc """
