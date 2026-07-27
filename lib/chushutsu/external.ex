@@ -43,7 +43,7 @@ defmodule Chushutsu.External do
         else: {tree, raw_root}
 
     {tree, algo_body} = Readability.summary(tree, raw_root)
-    algo_text = if algo_body, do: tree |> Tree.text_content(algo_body) |> Text.trim(), else: ""
+    algo_text = if algo_body, do: tree |> Tree.text_content(algo_body) |> Text.normalize_space(), else: ""
     algo_length = Text.len(algo_text)
 
     use_readability = prefer_readability?(tree, body, algo_body, algo_text, length, algo_length, options)
@@ -131,7 +131,7 @@ defmodule Chushutsu.External do
         Tree.put_text(tree, paragraph, text)
       end)
 
-    result = tree |> Tree.itertext(body) |> Enum.join(" ") |> Text.trim()
+    result = tree |> Tree.itertext(body) |> Enum.join(" ") |> Text.normalize_space()
     {tree, body, result, Text.len(result)}
   rescue
     error ->
@@ -169,7 +169,7 @@ defmodule Chushutsu.External do
       |> Enum.reject(&(&1 in Settings.tei_valid_tags()))
 
     tree = Tree.strip_tags(tree, root, invalid)
-    text = tree |> Tree.itertext(root) |> Enum.join(" ") |> Text.trim()
+    text = tree |> Tree.itertext(root) |> Enum.join(" ") |> Text.normalize_space()
     {tree, root, text, Text.len(text)}
   end
 

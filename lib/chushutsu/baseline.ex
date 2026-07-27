@@ -106,7 +106,7 @@ defmodule Chushutsu.Baseline do
       tree
       |> Tree.iterdescendants(root, ["article"])
       |> Enum.reject(&Tree.has_ancestor?(tree, &1, ["article"]))
-      |> Enum.map(&Text.trim(Tree.text_content(tree, &1)))
+      |> Enum.map(&Text.normalize_space(Tree.text_content(tree, &1)))
       |> Enum.filter(&(Text.len(&1) > @min_content_length))
 
     case texts do
@@ -124,7 +124,7 @@ defmodule Chushutsu.Baseline do
   defp paragraph_strategy(tree, root) do
     tree
     |> Tree.iterdescendants(root, ~w(blockquote code p pre q quote))
-    |> Enum.map(&Text.trim(Tree.text_content(tree, &1)))
+    |> Enum.map(&Text.normalize_space(Tree.text_content(tree, &1)))
     |> then(&attempt(tree, &1, dedupe: true))
   end
 
@@ -139,7 +139,7 @@ defmodule Chushutsu.Baseline do
         text =
           tree
           |> Tree.itertext(body_elem)
-          |> Enum.map(&Text.trim/1)
+          |> Enum.map(&Text.normalize_space/1)
           |> Enum.reject(&(&1 == ""))
           |> Enum.join("\n")
           |> Text.remove_control_characters()
@@ -325,8 +325,8 @@ defmodule Chushutsu.Baseline do
     raw = raw |> Text.unescape() |> Text.remove_control_characters()
 
     case Chushutsu.Tree.Parser.fragment(raw) do
-      {:ok, nodes} -> nodes |> Floki.text() |> Text.trim()
-      :error -> Text.trim(raw)
+      {:ok, nodes} -> nodes |> Floki.text() |> Text.normalize_space()
+      :error -> Text.normalize_space(raw)
     end
   end
 

@@ -504,9 +504,9 @@ defmodule Chushutsu.Serialize.Text do
 
   defp absorb_nested_emphasis(tree, id, active) do
     with [child] <- Tree.children(tree, id),
-         true <- Text.trim(Tree.text(tree, id)) == "",
+         true <- Text.normalize_space(Tree.text(tree, id)) == "",
          true <- Tree.tag(tree, child) == "hi",
-         true <- Text.trim(Tree.tail(tree, child)) == "",
+         true <- Text.normalize_space(Tree.tail(tree, child)) == "",
          true <- Map.get(@hi_formatting, Tree.attr(tree, child, "rend") || "") in active do
       tree =
         tree

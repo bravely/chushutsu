@@ -338,7 +338,7 @@ defmodule Chushutsu.Serialize.Xml do
 
   defp handle_tail(tree, id) do
     tag = Tree.tag(tree, id)
-    tail = Text.trim(Tree.tail(tree, id))
+    tail = Text.normalize_space(Tree.tail(tree, id))
 
     cond do
       tag not in @tei_remove_tail or tail == "" ->

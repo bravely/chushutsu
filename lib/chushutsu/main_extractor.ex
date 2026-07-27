@@ -609,7 +609,7 @@ defmodule Chushutsu.MainExtractor do
     Tree.attr(tree, id, "lang") != nil or Tree.tag(tree, id) == "code" or
       (parent && String.contains?(Tree.attr(tree, parent, "class", ""), "highlight")) or
       (inner_code != nil and Tree.child_count(tree, id) == 1 and
-         Text.trim(Tree.text(tree, id)) == "" and Text.trim(Tree.tail(tree, inner_code)) == "")
+         Text.normalize_space(Tree.text(tree, id)) == "" and Text.normalize_space(Tree.tail(tree, inner_code)) == "")
   end
 
   defp handle_code_blocks(tree, id) do
@@ -1323,7 +1323,7 @@ defmodule Chushutsu.MainExtractor do
   comparison use this, or invented spaces would defeat it.
   """
   @spec elem_text(Tree.t(), Tree.id()) :: String.t()
-  def elem_text(tree, id), do: tree |> Tree.itertext(id) |> Enum.join() |> Text.trim()
+  def elem_text(tree, id), do: tree |> Tree.itertext(id) |> Enum.join() |> Text.normalize_space()
 
   defp body_text(tree, body), do: tree |> Tree.itertext(body) |> Enum.join(" ") |> String.trim()
 end

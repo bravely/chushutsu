@@ -326,7 +326,7 @@ defmodule Chushutsu.Core do
   defp check_duplicate(_result, %Options{dedup: false}), do: :ok
 
   defp check_duplicate(result, options) do
-    text = result.tree |> Tree.itertext(result.body) |> Enum.join(" ") |> Text.trim()
+    text = result.tree |> Tree.itertext(result.body) |> Enum.join(" ") |> Text.normalize_space()
 
     if Deduplication.duplicate_text?(text, options),
       do: {:error, :duplicate_document},

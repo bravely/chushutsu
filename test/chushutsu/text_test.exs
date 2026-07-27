@@ -3,20 +3,20 @@ defmodule Chushutsu.TextTest do
 
   alias Chushutsu.Text
 
-  describe "trim/1" do
-    test "collapses runs of whitespace and strips the edges" do
-      assert Text.trim("  a   b\n\tc  ") == "a b c"
-      assert Text.trim("") == ""
-      assert Text.trim(nil) == ""
+  describe "normalize_space/1" do
+    test "collapses interior runs as well as the edges, unlike String.trim/1" do
+      assert Text.normalize_space("  a   b\n\tc  ") == "a b c"
+      assert Text.normalize_space("") == ""
+      assert Text.normalize_space(nil) == ""
     end
 
     test "treats a non-breaking space as whitespace, like Python's str.split" do
-      assert Text.trim("a\u{00A0}b") == "a b"
-      assert Text.trim("\u{00A0}") == ""
+      assert Text.normalize_space("a\u{00A0}b") == "a b"
+      assert Text.normalize_space("\u{00A0}") == ""
     end
 
     test "keeps a zero-width space, which Python does not consider whitespace" do
-      assert Text.trim("a\u{200B}b") == "a\u{200B}b"
+      assert Text.normalize_space("a\u{200B}b") == "a\u{200B}b"
     end
   end
 

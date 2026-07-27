@@ -41,7 +41,7 @@ defmodule Chushutsu.Deduplication do
     tree
     |> Tree.itertext(id)
     |> Enum.join(" ")
-    |> Text.trim()
+    |> Text.normalize_space()
     |> duplicate_text?(options)
   end
 

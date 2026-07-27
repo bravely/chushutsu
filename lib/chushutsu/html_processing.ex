@@ -157,7 +157,7 @@ defmodule Chushutsu.HtmlProcessing do
   def collect_link_info(tree, link_ids) do
     texts =
       link_ids
-      |> Enum.map(&Text.trim(Tree.text_content(tree, &1)))
+      |> Enum.map(&Text.normalize_space(Tree.text_content(tree, &1)))
       |> Enum.reject(&(&1 == ""))
 
     lengths = Enum.map(texts, &Text.len/1)
@@ -186,7 +186,7 @@ defmodule Chushutsu.HtmlProcessing do
   # One long link covering nearly the whole element: a card, not a paragraph.
   defp single_dominant_link?(tree, [link], text, favor_precision) do
     threshold = if favor_precision, do: 10, else: 100
-    link_len = tree |> Tree.text_content(link) |> Text.trim() |> Text.len()
+    link_len = tree |> Tree.text_content(link) |> Text.normalize_space() |> Text.len()
     link_len > threshold and link_len > Text.len(text) * 0.9
   end
 
@@ -239,7 +239,7 @@ defmodule Chushutsu.HtmlProcessing do
   @spec link_density_test_tables(Tree.t(), Tree.id()) :: boolean
   def link_density_test_tables(tree, id) do
     links = Tree.find_all(tree, id, "ref")
-    elem_len = tree |> Tree.text_content(id) |> Text.trim() |> Text.len()
+    elem_len = tree |> Tree.text_content(id) |> Text.normalize_space() |> Text.len()
 
     cond do
       links == [] ->
@@ -271,7 +271,7 @@ defmodule Chushutsu.HtmlProcessing do
     tree
     |> Tree.iter(root, [tagname])
     |> Enum.filter(fn id ->
-      text = tree |> Tree.text_content(id) |> Text.trim()
+      text = tree |> Tree.text_content(id) |> Text.normalize_space()
       {dense?, texts} = link_density_test(tree, id, text, favor_precision)
 
       backtrack? =
@@ -347,7 +347,7 @@ defmodule Chushutsu.HtmlProcessing do
   defp maybe_trim_tail(tree, _id, true), do: tree
 
   defp maybe_trim_tail(tree, id, false),
-    do: Tree.put_tail(tree, id, presence(Text.trim(Tree.tail(tree, id))))
+    do: Tree.put_tail(tree, id, presence(Text.normalize_space(Tree.tail(tree, id))))
 
   defp borrow_tail(tree, id, comments_fix) do
     if Tree.text(tree, id) in [nil, ""] and Tree.children(tree, id) == [] do
@@ -361,11 +361,11 @@ defmodule Chushutsu.HtmlProcessing do
   defp trim_node(tree, _id, true), do: tree
 
   defp trim_node(tree, id, false) do
-    tree = Tree.put_text(tree, id, presence(Text.trim(Tree.text(tree, id))))
+    tree = Tree.put_text(tree, id, presence(Text.normalize_space(Tree.text(tree, id))))
 
     case Tree.tail(tree, id) do
       tail when tail in [nil, ""] -> tree
-      tail -> Tree.put_tail(tree, id, presence(Text.trim(tail)))
+      tail -> Tree.put_tail(tree, id, presence(Text.normalize_space(tail)))
     end
   end
 
@@ -390,8 +390,8 @@ defmodule Chushutsu.HtmlProcessing do
     else
       tree =
         tree
-        |> Tree.put_text(id, presence(Text.trim(Tree.text(tree, id))))
-        |> Tree.put_tail(id, presence(Text.trim(Tree.tail(tree, id))))
+        |> Tree.put_text(id, presence(Text.normalize_space(Tree.text(tree, id))))
+        |> Tree.put_tail(id, presence(Text.normalize_space(Tree.tail(tree, id))))
         |> promote_tail(id)
 
       if has_content?(tree, id) and rejected?(tree, id, options),
@@ -639,7 +639,7 @@ defmodule Chushutsu.HtmlProcessing do
           # reversed so each insertion lands before the previous one
           tree = Enum.reduce(Enum.reverse(graphics), tree, &Tree.insert_after(&2, ref, &1))
 
-          if Text.trim(Tree.text_content(tree, ref)) == "",
+          if Text.normalize_space(Tree.text_content(tree, ref)) == "",
             do: Tree.delete_element(tree, ref),
             else: tree
       end

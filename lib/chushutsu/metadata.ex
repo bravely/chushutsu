@@ -304,11 +304,11 @@ defmodule Chushutsu.Metadata do
     end
   end
 
-  defp lone_h1(tree, [only]), do: presence(Text.trim(Tree.text_content(tree, only)))
+  defp lone_h1(tree, [only]), do: presence(Text.normalize_space(Tree.text_content(tree, only)))
   defp lone_h1(_tree, _h1s), do: nil
 
   defp first_nonempty(tree, ids) do
-    Enum.find_value(ids, fn id -> presence(Text.trim(Tree.text_content(tree, id))) end)
+    Enum.find_value(ids, fn id -> presence(Text.normalize_space(Tree.text_content(tree, id))) end)
   end
 
   # A <title> is usually "Headline — Site"; the part without a dot in it is the
@@ -324,10 +324,10 @@ defmodule Chushutsu.Metadata do
         {nil, nil, nil}
 
       id ->
-        full = Text.trim(Tree.text_content(tree, id))
+        full = Text.normalize_space(Tree.text_content(tree, id))
 
         case Regex.run(@html_title, full) do
-          [_all, first, second] -> {full, Text.trim(first), Text.trim(second)}
+          [_all, first, second] -> {full, Text.normalize_space(first), Text.normalize_space(second)}
           _ -> {full, nil, nil}
         end
     end
@@ -380,7 +380,7 @@ defmodule Chushutsu.Metadata do
       |> Text.unescape()
       |> String.replace(@author_noise, "")
       |> String.split(~r/\s*(?:,|;|\band\b|\bund\b|\bet\b)\s*/iu)
-      |> Enum.map(&Text.trim/1)
+      |> Enum.map(&Text.normalize_space/1)
       |> Enum.reject(&(&1 == "" or Text.len(&1) > @author_length_limit))
       |> Enum.uniq()
 
@@ -397,7 +397,7 @@ defmodule Chushutsu.Metadata do
       tree
       |> Selectors.select(root, rule)
       |> Enum.find_value(fn id ->
-        text = Text.trim(Tree.text_content(tree, id))
+        text = Text.normalize_space(Tree.text_content(tree, id))
         if text != "" and Text.len(text) < len_limit, do: text
       end)
     end)
@@ -605,7 +605,7 @@ defmodule Chushutsu.Metadata do
         "CC #{String.upcase(kind)} #{version}"
 
       _ ->
-        text = Text.trim(Tree.text_content(tree, id))
+        text = Text.normalize_space(Tree.text_content(tree, id))
         license_from_text(text, strict)
     end
   end
@@ -737,7 +737,7 @@ defmodule Chushutsu.Metadata do
   defp strip_markup(text), do: String.replace(text, @strip_tags, "")
 
   defp normalize_tags(tags) do
-    case tags |> Text.unescape() |> Text.trim() do
+    case tags |> Text.unescape() |> Text.normalize_space() do
       "" ->
         ""
 

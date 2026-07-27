@@ -38,11 +38,22 @@ defmodule Chushutsu.Text do
 
   @max_image_src_length 8192
 
-  @doc "Collapses all whitespace runs to single spaces and strips the ends."
-  @spec trim(String.t() | nil) :: String.t()
-  def trim(nil), do: ""
-  def trim(string) when is_binary(string), do: skip_leading(string)
-  def trim(_), do: ""
+  @doc """
+  Collapses every whitespace run to a single space and strips the ends.
+
+  This is Python's `" ".join(s.split())`, not `String.trim/1` — interior runs
+  collapse too, which is what every length threshold in the extractor is
+  measured against. Named for XPath's `normalize-space()`, which has exactly
+  these semantics.
+
+  The whitespace class is Python's `str.split()` set, which disagrees with
+  Elixir's at both ends: U+00A0 collapses here (`&nbsp;` is deliberately turned
+  into one upstream, expecting this step to fold it), and U+200B does not.
+  """
+  @spec normalize_space(String.t() | nil) :: String.t()
+  def normalize_space(nil), do: ""
+  def normalize_space(string) when is_binary(string), do: skip_leading(string)
+  def normalize_space(_), do: ""
 
   # Leading whitespace is dropped outright rather than collapsed to a space.
   defp skip_leading(<<codepoint::utf8, rest::binary>>) when is_space(codepoint), do: skip_leading(rest)
@@ -137,7 +148,7 @@ defmodule Chushutsu.Text do
   end
 
   defp collapse_line(new_line, original, trailing_space) do
-    collapsed = new_line |> String.replace(@lines_trimming, " ") |> trim()
+    collapsed = new_line |> String.replace(@lines_trimming, " ") |> normalize_space()
 
     cond do
       collapsed == "" -> nil

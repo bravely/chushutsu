@@ -100,7 +100,7 @@ defmodule Chushutsu.External.Readability do
     |> Enum.reduce(%{}, fn elem, candidates ->
       parent = Tree.parent(tree, elem)
       grandparent = parent && Tree.parent(tree, parent)
-      text = tree |> Tree.text_content(elem) |> Text.trim()
+      text = tree |> Tree.text_content(elem) |> Text.normalize_space()
 
       if parent == nil or Text.len(text) < min_text_length do
         candidates
@@ -171,7 +171,7 @@ defmodule Chushutsu.External.Readability do
     links / total
   end
 
-  defp text_length(tree, id), do: tree |> Tree.text_content(id) |> Text.trim() |> Text.len()
+  defp text_length(tree, id), do: tree |> Tree.text_content(id) |> Text.normalize_space() |> Text.len()
 
   defp select_best_candidate(candidates) when map_size(candidates) == 0, do: nil
 
@@ -276,7 +276,7 @@ defmodule Chushutsu.External.Readability do
 
   defp wrap_loose_text(tree, div) do
     tree =
-      if Text.trim(Tree.text(tree, div)) != "" do
+      if Text.normalize_space(Tree.text(tree, div)) != "" do
         {tree, paragraph} = Tree.create(tree, "p")
 
         tree
@@ -299,7 +299,7 @@ defmodule Chushutsu.External.Readability do
   end
 
   defp wrap_tail(tree, div, child, position) do
-    if Text.trim(Tree.tail(tree, child)) != "" do
+    if Text.normalize_space(Tree.tail(tree, child)) != "" do
       {tree, paragraph} = Tree.create(tree, "p")
 
       tree
