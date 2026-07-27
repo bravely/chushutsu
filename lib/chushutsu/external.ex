@@ -150,10 +150,12 @@ defmodule Chushutsu.External do
   def sanitize_tree(tree, root, options) do
     {tree, root} = HtmlProcessing.tree_cleaning(tree, root, options)
 
+    # anchors survive only when links were requested; spans never do
+    unwrap = if options.links, do: ["span"], else: ["a", "span"]
+
     tree =
       tree
-      |> then(&if(options.links, do: &1, else: Tree.strip_tags(&1, root, ["a"])))
-      |> Tree.strip_tags(root, ["span"])
+      |> Tree.strip_tags(root, unwrap)
       |> HtmlProcessing.convert_tags(root, options, options.url)
       |> mark_header_rows(root)
       |> rename_table_elements(root)

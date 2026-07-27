@@ -5,7 +5,7 @@ defmodule Chushutsu.TreeTest do
 
   describe "build/2 and basic accessors" do
     test "creates a detached element" do
-      {tree, id} = Tree.new() |> Tree.create("p")
+      {tree, id} = %Tree{} |> Tree.create("p")
 
       assert Tree.tag(tree, id) == "p"
       assert Tree.text(tree, id) == nil
@@ -15,7 +15,7 @@ defmodule Chushutsu.TreeTest do
     end
 
     test "attributes keep source order" do
-      {tree, id} = Tree.new() |> Tree.create("div", [{"id", "a"}, {"class", "b"}])
+      {tree, id} = %Tree{} |> Tree.create("div", [{"id", "a"}, {"class", "b"}])
 
       assert Tree.attrs(tree, id) == [{"id", "a"}, {"class", "b"}]
       assert Tree.attr(tree, id, "class") == "b"
@@ -26,7 +26,7 @@ defmodule Chushutsu.TreeTest do
 
     test "put_attr replaces in place, keeping position" do
       tree =
-        Tree.new()
+        %Tree{}
         |> Tree.create("div", [{"id", "a"}, {"class", "b"}])
         |> then(fn {t, id} -> Tree.put_attr(t, id, "id", "z") end)
 
@@ -183,7 +183,7 @@ defmodule Chushutsu.TreeTest do
     end
 
     test "to_html escapes text" do
-      {tree, id} = Tree.new() |> Tree.create("p")
+      {tree, id} = %Tree{} |> Tree.create("p")
       tree = Tree.put_text(tree, id, "a < b & c")
 
       assert Tree.to_html(tree, id) == "<p>a &lt; b &amp; c</p>"

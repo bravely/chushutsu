@@ -44,10 +44,6 @@ defmodule Chushutsu.Tree do
   # Void elements never get a closing tag when serialized back to HTML.
   @void_tags ~w(area base br col embed hr img input link meta param source track wbr)
 
-  @doc "An empty tree with no root."
-  @spec new() :: t
-  def new, do: %__MODULE__{}
-
   # ## Node creation -------------------------------------------------------
 
   @doc """
@@ -575,10 +571,10 @@ defmodule Chushutsu.Tree do
     case Chushutsu.Tree.Parser.document(html) do
       {:ok, floki} ->
         tree = from_floki(floki)
-        if dubious?(tree, html), do: new(), else: tree
+        if dubious?(tree, html), do: %__MODULE__{}, else: tree
 
       :error ->
-        new()
+        %__MODULE__{}
     end
   end
 
@@ -609,10 +605,10 @@ defmodule Chushutsu.Tree do
   def from_floki(floki) do
     case floki |> List.wrap() |> Enum.find(&match?({tag, _, _} when is_binary(tag), &1)) do
       nil ->
-        new()
+        %__MODULE__{}
 
       element ->
-        {tree, root} = build(new(), element)
+        {tree, root} = build(%__MODULE__{}, element)
         %{tree | root: root}
     end
   end

@@ -159,7 +159,7 @@ defmodule Chushutsu.Serialize.TextTest do
     end
 
     test "a nil body renders as an empty string" do
-      assert Serialize.Text.render(Tree.new(), nil, false) == ""
+      assert Serialize.Text.render(%Tree{}, nil, false) == ""
     end
 
     test "an item with no enclosing list does not blow up on its indent" do

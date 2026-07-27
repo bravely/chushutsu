@@ -183,10 +183,11 @@ defmodule Chushutsu.MainExtractor do
       else: potential_tags
   end
 
+  # Inline tags the caller did not ask to keep are unwrapped, leaving their text.
   defp strip_unwanted_inline(tree, subtree, potential_tags) do
-    tree
-    |> then(&if("ref" in potential_tags, do: &1, else: Tree.strip_tags(&1, subtree, ["ref"])))
-    |> then(&if("span" in potential_tags, do: &1, else: Tree.strip_tags(&1, subtree, ["span"])))
+    ~w(ref span)
+    |> Enum.reject(&(&1 in potential_tags))
+    |> Enum.reduce(tree, &Tree.strip_tags(&2, subtree, [&1]))
   end
 
   defp append_handled(tree, subtree, body, potential_tags, options) do
@@ -578,13 +579,12 @@ defmodule Chushutsu.MainExtractor do
             end
 
           Tree.tag(tree, subelem) in @inline_carried ->
-            {tree, _} = define_newelem(tree, subelem, target, keep_children: true)
-            tree
+            add_newelem(tree, subelem, target, keep_children: true)
 
           true ->
             case HtmlProcessing.handle_textnode(tree, subelem, options, comments_fix: false) do
               {tree, nil} -> tree
-              {tree, processed} -> define_newelem(tree, processed, target) |> elem(0)
+              {tree, processed} -> add_newelem(tree, processed, target)
             end
         end
 
@@ -642,7 +642,7 @@ defmodule Chushutsu.MainExtractor do
       Tree.tag(tree, child) == "graphic" ->
         case handle_image(tree, child, options) do
           {tree, nil} -> tree
-          {tree, image} -> define_newelem(tree, image, processed) |> elem(0)
+          {tree, image} -> add_newelem(tree, image, processed)
         end
 
       Tree.tag(tree, child) == "p" and Tree.children(tree, child) != [] ->
@@ -652,12 +652,12 @@ defmodule Chushutsu.MainExtractor do
         end
 
       Tree.tag(tree, child) in @inline_carried ->
-        define_newelem(tree, child, processed, keep_children: true) |> elem(0)
+        add_newelem(tree, child, processed, keep_children: true)
 
       true ->
         case HtmlProcessing.process_node(tree, child, options) do
           {tree, nil} -> tree
-          {tree, node} -> define_newelem(tree, node, processed) |> elem(0)
+          {tree, node} -> add_newelem(tree, node, processed)
         end
     end
   end
@@ -711,7 +711,7 @@ defmodule Chushutsu.MainExtractor do
         merge_paragraph_text(tree, node, processed)
 
       Tree.tag(tree, node) in @p_formatting and wraps_inline?(tree, node) ->
-        define_newelem(tree, node, processed, keep_children: true) |> elem(0)
+        add_newelem(tree, node, processed, keep_children: true)
 
       true ->
         append_paragraph_child(tree, child, node, processed, options)
@@ -1141,7 +1141,7 @@ defmodule Chushutsu.MainExtractor do
 
         case HtmlProcessing.handle_textnode(tree, child, state.options, preserve_spaces: true) do
           {tree, nil} -> tree
-          {tree, node} -> define_newelem(tree, node, new_cell, keep_children: true) |> elem(0)
+          {tree, node} -> add_newelem(tree, node, new_cell, keep_children: true)
         end
 
       tag in @inline_wrap_tags ->
@@ -1157,7 +1157,7 @@ defmodule Chushutsu.MainExtractor do
       true ->
         case handle_textelem(tree, child, state.ptags, state.options) do
           {tree, nil} -> tree
-          {tree, node} -> define_newelem(tree, node, new_cell, keep_children: true) |> elem(0)
+          {tree, node} -> add_newelem(tree, node, new_cell, keep_children: true)
         end
     end
   end
@@ -1168,14 +1168,14 @@ defmodule Chushutsu.MainExtractor do
         # handle_textnode drops an inline wrapper with children but no direct text
         # (e.g. <ref><hi>link text</hi></ref>); carry the subtree over instead
         if Tree.children(tree, child) != [] do
-          {tree, _} = define_newelem(tree, child, new_cell, keep_children: true)
+          tree = add_newelem(tree, child, new_cell, keep_children: true)
           Tree.put_tag_all(tree, Tree.iter(tree, child), "done")
         else
           tree
         end
 
       {tree, node} ->
-        define_newelem(tree, node, new_cell, keep_children: true) |> elem(0)
+        add_newelem(tree, node, new_cell, keep_children: true)
     end
   end
 
@@ -1252,7 +1252,14 @@ defmodule Chushutsu.MainExtractor do
 
   # Creates a fresh sub-element mirroring `source`, keeping only the internal
   # attributes and — when asked — its inline children.
-  defp define_newelem(tree, source, target, opts \\ [])
+  # Most callers only want the updated tree, so this wrapper spares them an
+  # elem(0) on every call.
+  defp add_newelem(tree, source, target, opts \\ []) do
+    {tree, _child} = define_newelem(tree, source, target, opts)
+    tree
+  end
+
+  defp define_newelem(tree, source, target, opts)
   defp define_newelem(tree, nil, _target, _opts), do: {tree, nil}
 
   defp define_newelem(tree, source, target, opts) do
@@ -1285,7 +1292,7 @@ defmodule Chushutsu.MainExtractor do
     |> Tree.children(source)
     |> Enum.filter(&(Tree.tag(tree, &1) in carried))
     |> Enum.reduce(tree, fn sub, tree ->
-      {tree, _} = define_newelem(tree, sub, target, keep_children: true)
+      tree = add_newelem(tree, sub, target, keep_children: true)
       # only the carried subtree is marked done; non-carried siblings stay processable
       Tree.put_tag_all(tree, Tree.iter(tree, sub), "done")
     end)

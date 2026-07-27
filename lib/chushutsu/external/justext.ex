@@ -96,19 +96,22 @@ defmodule Chushutsu.External.JusText do
   defp start_element(state, tag) do
     state = %{state | path: [tag | state.path]}
 
-    if tag in @paragraph_tags or (tag == "br" and state.br) do
-      state
+    cond do
       # a <br><br> separator is not itself part of the paragraph's tag count
-      |> then(&if(tag == "br", do: adjust_tags(&1, -1), else: &1))
-      |> flush()
-    else
-      br = tag == "br"
+      tag == "br" and state.br ->
+        state |> adjust_tags(-1) |> flush()
 
-      state
-      |> Map.put(:br, br)
-      |> then(&if(br, do: append_text(&1, " "), else: &1))
-      |> then(&if(not br and tag == "a", do: %{&1 | link: true}, else: &1))
-      |> adjust_tags(1)
+      tag in @paragraph_tags ->
+        flush(state)
+
+      tag == "br" ->
+        %{state | br: true} |> append_text(" ") |> adjust_tags(1)
+
+      tag == "a" ->
+        %{state | br: false, link: true} |> adjust_tags(1)
+
+      true ->
+        %{state | br: false} |> adjust_tags(1)
     end
   end
 
