@@ -101,6 +101,21 @@ worth about 0.01 F-score on its own.
 | `:target_language`                                           | `nil`   | discard documents not in this language |
 | `:deduplicate`                                               | `false` | drop segments already seen in this process |
 
+## Differences from trafilatura
+
+Three upstream behaviours are narrower here:
+
+- **`:target_language`** filters on the page's *declared* language only.
+  Upstream also classifies the extracted text with `py3langid`, catching pages
+  that declare nothing or declare wrongly.
+- **Date extraction** covers meta tags, JSON-LD, `<time>` elements and dates in
+  the URL. Upstream delegates to `htmldate`, which searches far more aggressively.
+- **`:tei_validation`** is accepted but performs no validation — there is no DTD
+  validator in the Erlang standard library. TEI output is still produced and
+  structurally repaired.
+
+None of these affect the accuracy measured above, which does not exercise them.
+
 ## Installation
 
 ```elixir

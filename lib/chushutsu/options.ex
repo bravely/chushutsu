@@ -5,6 +5,21 @@ defmodule Chushutsu.Options do
   Build one with `new/1` from a keyword list; the public API does that for you,
   so you only need this module when reusing a configuration across many
   documents.
+
+  ## Differences from trafilatura
+
+  Three upstream behaviours are narrower here, and are called out so nothing is
+  silently weaker than it looks:
+
+    * `:target_language` filters on the page's declared language only. Upstream
+      also classifies the extracted text with `py3langid`, so it catches a page
+      that declares nothing or declares wrongly; this does not.
+    * Date extraction covers meta tags, JSON-LD, `<time>` elements and dates in
+      the URL. Upstream delegates to `htmldate`, which searches far more
+      aggressively.
+    * `:tei_validation` is accepted but performs no validation — there is no DTD
+      validator in the Erlang standard library. TEI output is still produced and
+      structurally repaired.
   """
 
   alias Chushutsu.Settings
