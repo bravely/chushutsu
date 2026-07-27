@@ -32,10 +32,10 @@ implementations with different concurrency models.
 
 | Variant           | go-trafilatura   | trafilatura (Python) | Chushutsu (Elixir) |
 |-------------------|------------------|----------------------|--------------------|
-| standard          | 7.35 s / 6.4 ms  | 12.46 s / 9.2 ms     | 31.07 s / 22.8 ms  |
-| + fallback        | 11.94 s / 9.7 ms | 17.34 s / 12.6 ms    | 44.30 s / 32.8 ms  |
-| + favor precision | 11.34 s / 9.1 ms | 17.51 s / 14.1 ms    | 32.86 s / 26.5 ms  |
-| + favor recall    | 10.28 s / 7.9 ms | 11.77 s / 9.1 ms     | 29.44 s / 22.7 ms  |
+| standard          | 7.35 s / 6.4 ms  | 12.46 s / 9.2 ms     | 29.60 s / 21.4 ms  |
+| + fallback        | 11.94 s / 9.7 ms | 17.34 s / 12.6 ms    | 43.68 s / 31.7 ms  |
+| + favor precision | 11.34 s / 9.1 ms | 17.51 s / 14.1 ms    | 33.58 s / 26.4 ms  |
+| + favor recall    | 10.28 s / 7.9 ms | 11.77 s / 9.1 ms     | 29.88 s / 22.7 ms  |
 
 *(total wall clock / median per document)*
 
@@ -55,16 +55,26 @@ after across all 960 documents and all four variants.
 | `Text.trim/1` rewritten as a code-point scan over binary slices | a compiled regex per call — `String.replace` plus its UTF-8 revalidation came to ~20% of runtime, and `trim` runs on nearly every element |
 | Readability's div promotion checks tags directly | it serialized every div's subtree to HTML just to regex-test for block tags; the escaping alone was ~7% |
 | Hot lists resolved at compile time, `Keyword.get` off the hot paths | `Settings.*()` rebuilt lists per element, which also forced `in` to compile to `lists:member/2` |
+| Control characters stripped with a binary pattern; encoding validated with `String.valid?/2` in `:fast_ascii` mode | two full-document UTF-8 validations per page, one of them redundant, plus a regex over the whole document — 15.8% of the parse path between them |
 
-Gains: standard 12.5%, fallback 23.2%, precision 21.6%, recall 23.5%. The
+Gains: standard 16.7%, fallback 24.3%, precision 19.9%, recall 22.4%. The
 fallback variants gain most because the readability fix only applies there.
+
+### A caveat on reading eprof
+
+eprof traces every call, so a function invoked 15M times at 0.04 µs each has its
+attributed share dominated by tracing overhead. It reported 8.84% for the
+document-level UTF-8 validation; a direct A/B put the real figure near 1%. Two
+lessons, both learned the hard way here: trust the *ranking*, not the
+percentages, and confirm every fix with a wall-clock A/B. The call *counts* are
+reliable, and a count that does not move after a supposed fix is the tell —
+that is what exposed the misattribution.
 
 ### What remains
 
 Roughly in order, from a re-profile: `maps:put`/`update_node` (tree mutation),
-`Keyword.get` on the remaining option paths, `Text.len` code-point counting,
-`Tree.do_iter` list building, and `lists:member` from `tag in potential_tags`
-where the list is genuinely dynamic.
+`Text.len` code-point counting, `Tree.do_iter` list building, and `lists:member`
+from `tag in potential_tags` where the list is genuinely dynamic.
 
 None of that is a single hotspot any more — it is the spread cost of the arena.
 trafilatura gets its tree operations from lxml (C) and go-trafilatura from

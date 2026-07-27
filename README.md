@@ -50,8 +50,8 @@ Single-threaded, full pipeline (read + parse + extract), same machine and corpus
 
 | Variant    | go-trafilatura   | trafilatura (Python) | Chushutsu (Elixir) |
 |------------|------------------|----------------------|--------------------|
-| standard   | 7.35 s / 6.4 ms  | 12.46 s / 9.2 ms     | 31.07 s / 22.8 ms  |
-| + fallback | 11.94 s / 9.7 ms | 17.34 s / 12.6 ms    | 44.30 s / 32.8 ms  |
+| standard   | 7.35 s / 6.4 ms  | 12.46 s / 9.2 ms     | 29.60 s / 21.4 ms  |
+| + fallback | 11.94 s / 9.7 ms | 17.34 s / 12.6 ms    | 43.68 s / 31.7 ms  |
 
 Chushutsu is **1.9–2.6× slower than Python** and **2.9–4.2× slower than Go**.
 Parsing is only 11.5% of that — the cost is in tree manipulation, where
