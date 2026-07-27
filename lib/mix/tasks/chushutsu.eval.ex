@@ -28,6 +28,17 @@ defmodule Mix.Tasks.Chushutsu.Eval do
     * `--limit` — score only the first N documents, for a quick check
     * `--report` — write per-document results to this path as JSON, for
       diffing runs or finding regressions
+    * `--workers` — concurrent documents (default: one per scheduler). Pass `1`
+      for timings comparable to a single-threaded run of another implementation
+    * `--warmup` — extract this many documents before timing, so the first
+      run's JIT and stoplist loading do not land in the measurement
+
+  ## Timing
+
+  Reported durations cover the whole pipeline — read, parse, extract, serialize
+  — because that is what a caller actually pays. Note that go-trafilatura's own
+  comparison script parses every document *before* it starts its timer, so its
+  published figures exclude parsing and are not directly comparable.
   """
 
   use Mix.Task
@@ -50,7 +61,15 @@ defmodule Mix.Tasks.Chushutsu.Eval do
   def run(argv) do
     {opts, _rest} =
       OptionParser.parse!(argv,
-        strict: [corpus: :string, data: :string, variant: :keep, limit: :integer, report: :string]
+        strict: [
+          corpus: :string,
+          data: :string,
+          variant: :keep,
+          limit: :integer,
+          report: :string,
+          workers: :integer,
+          warmup: :integer
+        ]
       )
 
     Mix.Task.run("app.start")
@@ -58,11 +77,14 @@ defmodule Mix.Tasks.Chushutsu.Eval do
     corpus = opts[:corpus] || Mix.raise("--corpus is required (path to go-trafilatura test-files)")
     entries = load_entries(opts[:data] || "bench/comparison.json", corpus, opts[:limit])
 
-    Mix.shell().info("Documents: #{length(entries)}\n")
+    workers = opts[:workers] || System.schedulers_online()
+    warmup = opts[:warmup] || min(40, length(entries))
+
+    Mix.shell().info("Documents: #{length(entries)}   workers: #{workers}   warmup: #{warmup}\n")
 
     results =
       entries
-      |> run_variants(selected_variants(opts))
+      |> run_variants(selected_variants(opts), workers, warmup)
       |> tap(&print_table/1)
 
     if path = opts[:report], do: write_report(path, results)
@@ -110,24 +132,56 @@ defmodule Mix.Tasks.Chushutsu.Eval do
 
   # ## Running -------------------------------------------------------------
 
-  defp run_variants(entries, variants) do
+  defp run_variants(entries, variants, workers, warmup) do
     Enum.map(variants, fn {name, opts} ->
       Mix.shell().info("running #{name}…")
-      started = System.monotonic_time(:millisecond)
+
+      # The BEAM JITs on first execution and the jusText stoplists decompress
+      # lazily; without a warmup both land on whichever variant runs first.
+      entries |> Enum.take(warmup) |> Enum.each(&score_document(&1, opts))
+
+      started = System.monotonic_time(:microsecond)
 
       per_document =
         entries
         |> Task.async_stream(&score_document(&1, opts),
           timeout: :infinity,
-          max_concurrency: System.schedulers_online(),
+          max_concurrency: workers,
           ordered: false
         )
         |> Enum.map(fn {:ok, result} -> result end)
 
-      elapsed = (System.monotonic_time(:millisecond) - started) / 1000
+      elapsed = (System.monotonic_time(:microsecond) - started) / 1_000_000
       report_failures(per_document)
-      %{name: name, seconds: elapsed, totals: pool(per_document), documents: per_document}
+
+      %{
+        name: name,
+        seconds: elapsed,
+        latency: latency_stats(per_document),
+        totals: pool(per_document),
+        documents: per_document
+      }
     end)
+  end
+
+  # Per-document latency says more than total wall clock: it is unaffected by
+  # the worker count, so it compares across implementations with different
+  # concurrency models.
+  defp latency_stats(results) do
+    sorted = results |> Enum.map(& &1.micros) |> Enum.sort()
+    count = length(sorted)
+
+    %{
+      median: percentile(sorted, count, 0.50),
+      p95: percentile(sorted, count, 0.95),
+      max: List.last(sorted) || 0
+    }
+  end
+
+  defp percentile([], _count, _fraction), do: 0
+
+  defp percentile(sorted, count, fraction) do
+    Enum.at(sorted, min(round(fraction * count), count - 1))
   end
 
   # Crashes are bugs, not scores. Surfacing them keeps a regression from hiding
@@ -148,15 +202,19 @@ defmodule Mix.Tasks.Chushutsu.Eval do
   defp score_document(entry, opts) do
     options = Keyword.merge([include_comments: false, include_tables: true, url: entry.url], opts)
 
+    started = System.monotonic_time(:microsecond)
+
     {text, failure} =
       case File.read(entry.path) do
         {:ok, html} -> safe_extract(html, options)
         {:error, reason} -> {"", "read: #{inspect(reason)}"}
       end
 
+    micros = System.monotonic_time(:microsecond) - started
+
     entry
     |> evaluate(text)
-    |> Map.merge(%{file: entry.file, extracted: String.length(text), failure: failure})
+    |> Map.merge(%{file: entry.file, extracted: String.length(text), failure: failure, micros: micros})
   end
 
   # A crash on one page must not abort a 900-page run, but it must not be
@@ -199,7 +257,16 @@ defmodule Mix.Tasks.Chushutsu.Eval do
   # ## Reporting -----------------------------------------------------------
 
   defp print_table(results) do
-    header = ["Extractor", "Duration (s)", "Precision", "Recall", "Accuracy", "F Score"]
+    header = [
+      "Extractor",
+      "Total (s)",
+      "Median (ms)",
+      "p95 (ms)",
+      "Precision",
+      "Recall",
+      "Accuracy",
+      "F Score"
+    ]
 
     rows =
       Enum.map(results, fn result ->
@@ -208,6 +275,8 @@ defmodule Mix.Tasks.Chushutsu.Eval do
         [
           result.name,
           :erlang.float_to_binary(result.seconds, decimals: 3),
+          ms(result.latency.median),
+          ms(result.latency.p95),
           fmt(m.precision),
           fmt(m.recall),
           fmt(m.accuracy),
@@ -254,12 +323,15 @@ defmodule Mix.Tasks.Chushutsu.Eval do
 
   defp fmt(value), do: :erlang.float_to_binary(value / 1, decimals: 3)
 
+  defp ms(micros), do: :erlang.float_to_binary(micros / 1000, decimals: 2)
+
   defp write_report(path, results) do
     payload =
       Map.new(results, fn result ->
         {result.name,
          %{
            seconds: result.seconds,
+           latency: result.latency,
            totals: result.totals,
            metrics: metrics(result.totals),
            documents: Enum.sort_by(result.documents, & &1.file)

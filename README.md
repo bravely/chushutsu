@@ -43,6 +43,28 @@ The corpus is ~150 MB of third-party HTML and is not vendored.
 `bench/comparison.json` holds the annotations, converted from go-trafilatura's Go
 source.
 
+## Speed
+
+Single-threaded, full pipeline (read + parse + extract), same machine and corpus,
+40-document warmup excluded — total wall clock / median per document:
+
+| Variant    | go-trafilatura   | trafilatura (Python) | Chushutsu (Elixir) |
+|------------|------------------|----------------------|--------------------|
+| standard   | 7.35 s / 6.4 ms  | 12.46 s / 9.2 ms     | 35.53 s / 26.1 ms  |
+| + fallback | 11.94 s / 9.7 ms | 17.34 s / 12.6 ms    | 57.71 s / 42.1 ms  |
+
+Chushutsu is **2.4–3.3× slower than Python** and **3.7–4.8× slower than Go**.
+Parsing is only 11.5% of that — the cost is in tree manipulation, where
+trafilatura gets lxml (C) and go-trafilatura gets native pointers, while
+`Chushutsu.Tree` is pure Elixir over an immutable map. That is the price of the
+arena design, and it is addressable without changing behaviour.
+
+Across all 10 cores the fallback variant drops to 14.79 s (3.9× speedup), since
+the BEAM parallelizes in-process.
+
+Full methodology, per-variant figures and the harnesses used for all three
+implementations are in [`bench/RESULTS.md`](bench/RESULTS.md).
+
 ## How it works
 
 Extraction is a cascade. Each stage engages only when the previous one came up
