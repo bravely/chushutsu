@@ -7,8 +7,17 @@ defmodule Chushutsu.Tree.Parser do
   before parsing rather than worked around afterwards.
   """
 
-  # Control characters that are invalid in XML and that lxml refuses in text nodes.
-  @invalid_chars ~r/[\x{0}-\x{8}\x{b}\x{c}\x{e}-\x{1f}\x{fffe}\x{ffff}]/u
+  # Control characters that are invalid in XML and that lxml refuses in text nodes:
+  # U+0000-0008, U+000B, U+000C, U+000E-001F, plus U+FFFE and U+FFFF.
+  #
+  # Matched as literal binaries rather than a regex. Every one of these is a
+  # single ASCII byte apart from the two noncharacters, whose UTF-8 encodings
+  # cannot overlap any other character, so a plain binary replace is exact — and
+  # it skips both the regex engine and the full-document UTF-8 validation that
+  # `String.replace/3` performs, which together were ~9% of runtime.
+  @invalid_chars Enum.map(Enum.to_list(0..8) ++ [0x0B, 0x0C] ++ Enum.to_list(0x0E..0x1F), &<<&1>>) ++
+                   [<<0xEF, 0xBF, 0xBE>>, <<0xEF, 0xBF, 0xBF>>]
+
   @doctype_tag ~r/^< ?! ?DOCTYPE[^>]*\/[^<>]*>/i
   @faulty_html ~r/(<html.*?)\s*\/>/i
 
@@ -54,8 +63,31 @@ defmodule Chushutsu.Tree.Parser do
     |> fix_self_closing_html()
   end
 
+  # `:binary.match/2` short-circuits on the first hit, so the common case (a
+  # document with no control characters at all) costs one scan and no rewrite.
   defp strip_invalid_chars(html) do
-    if String.valid?(html), do: String.replace(html, @invalid_chars, ""), else: html
+    pattern = invalid_pattern()
+
+    case :binary.match(html, pattern) do
+      :nomatch -> html
+      _found -> :binary.replace(html, pattern, "", [:global])
+    end
+  end
+
+  # A compiled pattern is a runtime resource, so it cannot be a module
+  # attribute; build it once and keep it where every process can read it.
+  defp invalid_pattern do
+    key = {__MODULE__, :invalid_pattern}
+
+    case :persistent_term.get(key, :missing) do
+      :missing ->
+        pattern = :binary.compile_pattern(@invalid_chars)
+        :persistent_term.put(key, pattern)
+        pattern
+
+      pattern ->
+        pattern
+    end
   end
 
   defp fix_doctype(html, beginning) do
