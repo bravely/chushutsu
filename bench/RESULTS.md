@@ -30,35 +30,51 @@ implementations with different concurrency models.
 
 ## Speed (single-threaded, full pipeline)
 
-| Variant           | go-trafilatura      | trafilatura (Python) | Chushutsu (Elixir)   |
-|-------------------|---------------------|----------------------|----------------------|
-| standard          | 7.35 s / 6.4 ms     | 12.46 s / 9.2 ms     | 35.53 s / 26.1 ms    |
-| + fallback        | 11.94 s / 9.7 ms    | 17.34 s / 12.6 ms    | 57.71 s / 42.1 ms    |
-| + favor precision | 11.34 s / 9.1 ms    | 17.51 s / 14.1 ms    | 41.92 s / 32.1 ms    |
-| + favor recall    | 10.28 s / 7.9 ms    | 11.77 s / 9.1 ms     | 38.49 s / 28.8 ms    |
+| Variant           | go-trafilatura   | trafilatura (Python) | Chushutsu (Elixir) |
+|-------------------|------------------|----------------------|--------------------|
+| standard          | 7.35 s / 6.4 ms  | 12.46 s / 9.2 ms     | 31.07 s / 22.8 ms  |
+| + fallback        | 11.94 s / 9.7 ms | 17.34 s / 12.6 ms    | 44.30 s / 32.8 ms  |
+| + favor precision | 11.34 s / 9.1 ms | 17.51 s / 14.1 ms    | 32.86 s / 26.5 ms  |
+| + favor recall    | 10.28 s / 7.9 ms | 11.77 s / 9.1 ms     | 29.44 s / 22.7 ms  |
 
 *(total wall clock / median per document)*
 
-Chushutsu is **2.4–3.3× slower than Python** and **3.7–4.8× slower than Go**.
+Chushutsu is **1.9–2.6× slower than Python** and **2.9–4.2× slower than Go**.
 
-### Where the time goes
+Run-to-run variance on these totals is roughly ±3%, so differences smaller than
+that are noise.
 
-Profiling the pipeline over a 240-document sample:
+## Profiling pass
 
-| Phase                          | Share |
-|--------------------------------|-------|
-| HTML parsing (html5ever, Rust) | 11.5% |
-| Extraction (Elixir)            | 88.5% |
+An `:eprof` run over a 60-document sample found three costs that were not
+inherent to the design, all since removed. Output is byte-identical before and
+after across all 960 documents and all four variants.
 
-Parsing is not the bottleneck — the tree manipulation is. trafilatura gets its
-tree operations from lxml (C) and go-trafilatura from native structs with real
-pointers; `Chushutsu.Tree` is pure Elixir over an immutable map, so every
-`put_tag`, `append` and `delete_element` is a map update rather than a pointer
-write, and `deep_copy` genuinely rebuilds a subtree where lxml can memcpy.
+| Fix | Was |
+|-----|-----|
+| `Text.trim/1` rewritten as a code-point scan over binary slices | a compiled regex per call — `String.replace` plus its UTF-8 revalidation came to ~20% of runtime, and `trim` runs on nearly every element |
+| Readability's div promotion checks tags directly | it serialized every div's subtree to HTML just to regex-test for block tags; the escaping alone was ~7% |
+| Hot lists resolved at compile time, `Keyword.get` off the hot paths | `Settings.*()` rebuilt lists per element, which also forced `in` to compile to `lists:member/2` |
 
-This is a deliberate trade — the arena is what makes the port safe to reason
-about and testable — but it is where the gap lives, and it is addressable
-without changing behaviour if it ever matters.
+Gains: standard 12.5%, fallback 23.2%, precision 21.6%, recall 23.5%. The
+fallback variants gain most because the readability fix only applies there.
+
+### What remains
+
+Roughly in order, from a re-profile: `maps:put`/`update_node` (tree mutation),
+`Keyword.get` on the remaining option paths, `Text.len` code-point counting,
+`Tree.do_iter` list building, and `lists:member` from `tag in potential_tags`
+where the list is genuinely dynamic.
+
+None of that is a single hotspot any more — it is the spread cost of the arena.
+trafilatura gets its tree operations from lxml (C) and go-trafilatura from
+native structs with real pointers, while `Chushutsu.Tree` is pure Elixir over an
+immutable map: every `put_tag`, `append` and `delete_element` is a map update
+rather than a pointer write. That is the deliberate trade that makes the port
+safe to reason about and testable, and closing the rest of the gap would mean
+reconsidering it.
+
+Parsing is not the bottleneck: html5ever accounts for 11.5% of the pipeline.
 
 ## Speed (all cores)
 
@@ -67,10 +83,10 @@ spread across schedulers:
 
 | Variant           | 1 worker | 10 workers | speedup |
 |-------------------|----------|------------|---------|
-| standard          | 35.53 s  | 9.28 s     | 3.8×    |
-| + fallback        | 57.71 s  | 14.79 s    | 3.9×    |
-| + favor precision | 41.92 s  | 11.30 s    | 3.7×    |
-| + favor recall    | 38.49 s  | 13.53 s    | 2.8×    |
+| standard          | 31.07 s  | 5.38 s     | 5.8×    |
+| + fallback        | 44.30 s  | 7.66 s     | 5.8×    |
+| + favor precision | 32.86 s  | 5.54 s     | 5.9×    |
+| + favor recall    | 29.44 s  | 5.52 s     | 5.3×    |
 
 Short of linear, as expected — allocation-heavy work on ten schedulers contends
 for memory bandwidth and GC.

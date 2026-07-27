@@ -23,6 +23,15 @@ defmodule Chushutsu.MainExtractor do
 
   @max_span 100
 
+  # Resolved at compile time; see the note in Chushutsu.Serialize.Text.
+  @tag_catalog Settings.tag_catalog()
+  @inline_carried Settings.inline_carried()
+  @formatting_protected Settings.formatting_protected()
+  # tags permitted inside a quoted paragraph
+  @quote_tags Settings.tag_catalog() ++ ["ref", "graphic"]
+  @min_duplicate_length Settings.min_duplicate_length()
+  @dedupe_scan_cap Settings.dedupe_scan_cap()
+
   # ## Entry points --------------------------------------------------------
 
   @doc """
@@ -64,7 +73,7 @@ defmodule Chushutsu.MainExtractor do
           {Tree.t(), Tree.id(), String.t(), non_neg_integer}
   def extract_comments(tree, root, %Options{} = options) do
     {tree, body} = Tree.create(tree, "body")
-    potential_tags = Settings.tag_catalog()
+    potential_tags = @tag_catalog
 
     {tree, body} =
       Enum.reduce_while(Selectors.comments(), {tree, body}, fn rule, {tree, body} ->
@@ -130,7 +139,7 @@ defmodule Chushutsu.MainExtractor do
   end
 
   defp initial_potential_tags(options) do
-    Settings.tag_catalog()
+    @tag_catalog
     |> maybe_add(options.tables, ~w(table td th tr))
     |> maybe_add(options.images, ["graphic"])
     |> maybe_add(options.links, ["ref"])
@@ -379,7 +388,7 @@ defmodule Chushutsu.MainExtractor do
   defp duplicate_of_existing?(text, texts, joined) do
     text != "" and
       (MapSet.member?(texts, text) or
-         (Text.len(text) > Settings.min_duplicate_length() and under_cap?(joined) and
+         (Text.len(text) > @min_duplicate_length and under_cap?(joined) and
             String.contains?(joined, text)))
   end
 
@@ -388,7 +397,7 @@ defmodule Chushutsu.MainExtractor do
     {MapSet.put(texts, text), joined}
   end
 
-  defp under_cap?(joined), do: Text.len(joined) <= Settings.dedupe_scan_cap()
+  defp under_cap?(joined), do: Text.len(joined) <= @dedupe_scan_cap
 
   # Newline-joined, since trimmed element text never contains one — that way no
   # substring match can straddle two elements.
@@ -406,7 +415,7 @@ defmodule Chushutsu.MainExtractor do
       current = elem_text(tree, id)
 
       if current != "" and current == previous and
-           Text.len(current) > Settings.min_duplicate_length() do
+           Text.len(current) > @min_duplicate_length do
         {Tree.delete_element(tree, id, keep_tail: false), previous}
       else
         {tree, current}
@@ -470,7 +479,7 @@ defmodule Chushutsu.MainExtractor do
       {tree, formatting} ->
         anchor = Tree.parent(tree, id) || Tree.prev_sibling(tree, id)
 
-        if anchor && Tree.tag(tree, anchor) in Settings.formatting_protected() do
+        if anchor && Tree.tag(tree, anchor) in @formatting_protected do
           {tree, formatting}
         else
           # an orphan inline run needs a block to live in
@@ -568,7 +577,7 @@ defmodule Chushutsu.MainExtractor do
               {tree, sublist} -> Tree.append(tree, target, sublist)
             end
 
-          Tree.tag(tree, subelem) in Settings.inline_carried() ->
+          Tree.tag(tree, subelem) in @inline_carried ->
             {tree, _} = define_newelem(tree, subelem, target, keep_children: true)
             tree
 
@@ -609,9 +618,6 @@ defmodule Chushutsu.MainExtractor do
     {tree, copy}
   end
 
-  # Tags permitted inside a quoted paragraph.
-  defp quote_tags, do: Settings.tag_catalog() ++ ["ref", "graphic"]
-
   defp build_quote(tree, id, options) do
     {tree, processed} = Tree.create(tree, Tree.tag(tree, id))
     tree = Tree.put_text(tree, processed, Tree.text(tree, id))
@@ -640,12 +646,12 @@ defmodule Chushutsu.MainExtractor do
         end
 
       Tree.tag(tree, child) == "p" and Tree.children(tree, child) != [] ->
-        case handle_paragraphs(tree, child, quote_tags(), options) do
+        case handle_paragraphs(tree, child, @quote_tags, options) do
           {tree, nil} -> tree
           {tree, paragraph} -> Tree.append(tree, processed, paragraph)
         end
 
-      Tree.tag(tree, child) in Settings.inline_carried() ->
+      Tree.tag(tree, child) in @inline_carried ->
         define_newelem(tree, child, processed, keep_children: true) |> elem(0)
 
       true ->
@@ -1273,7 +1279,7 @@ defmodule Chushutsu.MainExtractor do
   end
 
   defp carry_inline_children(tree, source, target) do
-    carried = Settings.inline_carried() ++ ["lb"]
+    carried = @inline_carried ++ ["lb"]
 
     tree
     |> Tree.children(source)
@@ -1289,7 +1295,7 @@ defmodule Chushutsu.MainExtractor do
   defp wraps_inline?(tree, id) do
     Tree.children(tree, id) != [] and
       (Tree.tag(tree, id) == "ref" or
-         Enum.any?(Tree.children(tree, id), &(Tree.tag(tree, &1) in Settings.inline_carried())))
+         Enum.any?(Tree.children(tree, id), &(Tree.tag(tree, &1) in @inline_carried)))
   end
 
   defp copy_rendition(tree, from, to) do

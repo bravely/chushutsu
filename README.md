@@ -50,16 +50,16 @@ Single-threaded, full pipeline (read + parse + extract), same machine and corpus
 
 | Variant    | go-trafilatura   | trafilatura (Python) | Chushutsu (Elixir) |
 |------------|------------------|----------------------|--------------------|
-| standard   | 7.35 s / 6.4 ms  | 12.46 s / 9.2 ms     | 35.53 s / 26.1 ms  |
-| + fallback | 11.94 s / 9.7 ms | 17.34 s / 12.6 ms    | 57.71 s / 42.1 ms  |
+| standard   | 7.35 s / 6.4 ms  | 12.46 s / 9.2 ms     | 31.07 s / 22.8 ms  |
+| + fallback | 11.94 s / 9.7 ms | 17.34 s / 12.6 ms    | 44.30 s / 32.8 ms  |
 
-Chushutsu is **2.4–3.3× slower than Python** and **3.7–4.8× slower than Go**.
+Chushutsu is **1.9–2.6× slower than Python** and **2.9–4.2× slower than Go**.
 Parsing is only 11.5% of that — the cost is in tree manipulation, where
 trafilatura gets lxml (C) and go-trafilatura gets native pointers, while
 `Chushutsu.Tree` is pure Elixir over an immutable map. That is the price of the
-arena design, and it is addressable without changing behaviour.
+arena design.
 
-Across all 10 cores the fallback variant drops to 14.79 s (3.9× speedup), since
+Across all 10 cores the fallback variant drops to 7.66 s (5.8× speedup), since
 the BEAM parallelizes in-process.
 
 Full methodology, per-variant figures and the harnesses used for all three

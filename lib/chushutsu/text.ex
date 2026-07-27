@@ -11,9 +11,15 @@ defmodule Chushutsu.Text do
   # Elixir's `String.split/1` disagrees at both ends: it leaves U+00A0 alone and
   # splits on U+200B. Collapsing must match Python's set, because `&nbsp;` is
   # deliberately turned into U+00A0 upstream and expected to collapse here.
-  @whitespace ~S"\t\n\v\f\r \x{1c}-\x{1f}\x{85}\x{a0}\x{1680}\x{2000}-\x{200a}\x{2028}\x{2029}\x{202f}\x{205f}\x{3000}"
-  @whitespace_re Regex.compile!("[#{@whitespace}]+", "u")
-  @only_whitespace_re Regex.compile!("^[#{@whitespace}]*$", "u")
+  # The same class as a guard. `trim/1` and `blank?/1` run on nearly every
+  # element in the tree, and a compiled regex is far too slow at that volume —
+  # profiling put the regex machinery behind them at ~20% of total runtime.
+  # Matching code points directly avoids `re` and the UTF-8 revalidation that
+  # `String.replace/3` performs on every call.
+  defguardp is_space(codepoint)
+            when codepoint in [?\t, ?\n, ?\v, ?\f, ?\r, ?\s, 0x85, 0xA0, 0x1680, 0x2028, 0x2029, 0x202F, 0x205F, 0x3000] or
+                   codepoint in 0x1C..0x1F or
+                   codepoint in 0x2000..0x200A
 
   # Characters in Unicode category "Other" that are not whitespace: unprintable,
   # and rejected outright by XML serializers.
@@ -35,14 +41,40 @@ defmodule Chushutsu.Text do
   @doc "Collapses all whitespace runs to single spaces and strips the ends."
   @spec trim(String.t() | nil) :: String.t()
   def trim(nil), do: ""
+  def trim(string) when is_binary(string), do: skip_leading(string)
+  def trim(_), do: ""
 
-  def trim(string) when is_binary(string) do
-    string
-    |> String.replace(@whitespace_re, " ")
-    |> String.trim(" ")
+  # Leading whitespace is dropped outright rather than collapsed to a space.
+  defp skip_leading(<<codepoint::utf8, rest::binary>>) when is_space(codepoint), do: skip_leading(rest)
+  defp skip_leading(<<>>), do: ""
+  defp skip_leading(string), do: collapse(string, string, 0, [])
+
+  # Runs of clean text are copied out as whole binary slices rather than
+  # character by character, so an already-tidy string costs one `binary_part`.
+  defp collapse(<<codepoint::utf8, rest::binary>>, source, length, acc) when is_space(codepoint) do
+    case skip_run(rest) do
+      # trailing whitespace: emit what came before it and stop
+      <<>> -> finish(source, length, acc)
+      remainder -> collapse(remainder, remainder, 0, [" ", chunk(source, length) | acc])
+    end
   end
 
-  def trim(_), do: ""
+  defp collapse(<<codepoint::utf8, rest::binary>>, source, length, acc) do
+    collapse(rest, source, length + byte_size(<<codepoint::utf8>>), acc)
+  end
+
+  # invalid UTF-8: keep the byte verbatim, matching the previous behaviour
+  defp collapse(<<_byte, rest::binary>>, source, length, acc), do: collapse(rest, source, length + 1, acc)
+  defp collapse(<<>>, source, length, acc), do: finish(source, length, acc)
+
+  defp finish(source, length, []), do: chunk(source, length)
+  defp finish(source, length, acc), do: IO.iodata_to_binary(:lists.reverse([chunk(source, length) | acc]))
+
+  defp chunk(_source, 0), do: ""
+  defp chunk(source, length), do: binary_part(source, 0, length)
+
+  defp skip_run(<<codepoint::utf8, rest::binary>>) when is_space(codepoint), do: skip_run(rest)
+  defp skip_run(rest), do: rest
 
   @doc """
   Length in code points, matching Python's `len()`.
@@ -67,7 +99,9 @@ defmodule Chushutsu.Text do
 
   @doc "Whether the string is empty or entirely whitespace."
   @spec blank?(String.t()) :: boolean
-  def blank?(string), do: Regex.match?(@only_whitespace_re, string)
+  def blank?(<<codepoint::utf8, rest::binary>>) when is_space(codepoint), do: blank?(rest)
+  def blank?(<<>>), do: true
+  def blank?(string) when is_binary(string), do: false
 
   @doc "Strips characters that are neither printable nor whitespace."
   @spec remove_control_characters(String.t() | nil) :: String.t() | nil
@@ -124,7 +158,8 @@ defmodule Chushutsu.Text do
   defp ends_with_space?(<<>>), do: false
   defp ends_with_space?(string), do: string |> String.last() |> whitespace?()
 
-  defp whitespace?(char), do: Regex.match?(@only_whitespace_re, char) and char != ""
+  defp whitespace?(<<codepoint::utf8>>) when is_space(codepoint), do: true
+  defp whitespace?(_char), do: false
 
   @doc """
   Cleans a whole text, line by line, dropping blank lines.

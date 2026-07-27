@@ -83,28 +83,61 @@ defmodule Chushutsu.Tree do
   @doc "Whether `id` still refers to a live node."
   @spec exists?(t, id | nil) :: boolean
   def exists?(_tree, nil), do: false
-  def exists?(%__MODULE__{nodes: nodes}, id), do: Map.has_key?(nodes, id)
+  def exists?(%__MODULE__{nodes: nodes}, id), do: :erlang.is_map_key(id, nodes)
 
   @spec node(t, id) :: Node.t() | nil
   def node(%__MODULE__{nodes: nodes}, id), do: Map.get(nodes, id)
 
+  # These run in the tens of millions per corpus pass, so each is a single
+  # pattern-matched map lookup rather than a call through node/2.
+
   @spec tag(t, id) :: String.t() | nil
-  def tag(tree, id), do: with(%Node{tag: tag} <- node(tree, id), do: tag)
+  def tag(%__MODULE__{nodes: nodes}, id) do
+    case nodes do
+      %{^id => %Node{tag: tag}} -> tag
+      _ -> nil
+    end
+  end
 
   @spec text(t, id) :: String.t() | nil
-  def text(tree, id), do: with(%Node{text: text} <- node(tree, id), do: text)
+  def text(%__MODULE__{nodes: nodes}, id) do
+    case nodes do
+      %{^id => %Node{text: text}} -> text
+      _ -> nil
+    end
+  end
 
   @spec tail(t, id) :: String.t() | nil
-  def tail(tree, id), do: with(%Node{tail: tail} <- node(tree, id), do: tail)
+  def tail(%__MODULE__{nodes: nodes}, id) do
+    case nodes do
+      %{^id => %Node{tail: tail}} -> tail
+      _ -> nil
+    end
+  end
 
   @spec attrs(t, id) :: [{String.t(), String.t()}]
-  def attrs(tree, id), do: with(%Node{attrs: attrs} <- node(tree, id), do: attrs) || []
+  def attrs(%__MODULE__{nodes: nodes}, id) do
+    case nodes do
+      %{^id => %Node{attrs: attrs}} -> attrs
+      _ -> []
+    end
+  end
 
   @spec children(t, id) :: [id]
-  def children(tree, id), do: with(%Node{children: kids} <- node(tree, id), do: kids) || []
+  def children(%__MODULE__{nodes: nodes}, id) do
+    case nodes do
+      %{^id => %Node{children: children}} -> children
+      _ -> []
+    end
+  end
 
   @spec parent(t, id) :: id | nil
-  def parent(tree, id), do: with(%Node{parent: parent} <- node(tree, id), do: parent)
+  def parent(%__MODULE__{nodes: nodes}, id) do
+    case nodes do
+      %{^id => %Node{parent: parent}} -> parent
+      _ -> nil
+    end
+  end
 
   @doc "Number of direct children, matching lxml's `len(element)`."
   @spec child_count(t, id) :: non_neg_integer
@@ -236,9 +269,11 @@ defmodule Chushutsu.Tree do
   element — the extractor does that when the whole region is boilerplate.
   """
   @spec delete_element(t, id, keyword) :: t
-  def delete_element(tree, id, opts \\ []) do
-    keep_tail = Keyword.get(opts, :keep_tail, true)
+  def delete_element(tree, id), do: do_delete_element(tree, id, true)
 
+  def delete_element(tree, id, opts), do: do_delete_element(tree, id, Keyword.get(opts, :keep_tail, true))
+
+  defp do_delete_element(tree, id, keep_tail) do
     case parent(tree, id) do
       nil ->
         tree

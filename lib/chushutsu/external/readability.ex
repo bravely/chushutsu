@@ -28,7 +28,16 @@ defmodule Chushutsu.External.Readability do
   @maybe_candidate ~r/and|article|body|column|main|shadow/i
   @positive ~r/article|body|content|entry|hentry|main|page|pagination|post|text|blog|story/i
   @negative ~r/button|combx|comment|com-|contact|figure|foot|footer|footnote|form|input|masthead|media|meta|outbrain|promo|related|scroll|shoutbox|sidebar|sponsor|shopping|tags|tool|widget/i
-  @div_to_p ~r/<(?:a|blockquote|dl|div|img|ol|p|pre|table|ul)/i
+  # Upstream tests `<(?:a|blockquote|dl|div|img|ol|p|pre|table|ul)` against the
+  # serialized children. That pattern has no word boundary, so `<a` also matches
+  # `<article`/`<aside` and `<p` matches `<pre`/`<picture` — a quirk the div
+  # promotion is calibrated around, so it is reproduced as a prefix test.
+  # (`pre` is omitted below because `p` already subsumes it.)
+  #
+  # Checking tags directly rather than serializing matters: serializing every
+  # div's subtree to HTML made escaping alone ~7% of total runtime, and the
+  # escaping is pure waste here since only tag names are ever examined.
+  @div_to_p_prefixes ~w(a blockquote div dl img ol p table ul)
   @video ~r"https?://(?:www\.)?(?:youtube|vimeo)\.com"i
   @dot_space ~r/\.( |$)/
 
@@ -236,14 +245,34 @@ defmodule Chushutsu.External.Readability do
       tree
       |> Tree.iter(root, ["div"])
       |> Enum.reduce(tree, fn id, tree ->
-        serialized = tree |> Tree.children(id) |> Enum.map_join("", &Tree.to_html_with_tail(tree, &1))
-        if Regex.match?(@div_to_p, serialized), do: tree, else: Tree.put_tag(tree, id, "p")
+        if holds_block_markup?(tree, Tree.children(tree, id)),
+          do: tree,
+          else: Tree.put_tag(tree, id, "p")
       end)
 
     tree
     |> Tree.iter(root, ["div"])
     |> Enum.reduce(tree, &wrap_loose_text(&2, &1))
   end
+
+  @doc """
+  Whether any of these subtrees carries block-level markup.
+
+  Exposed for testing: the prefix semantics below are a deliberate quirk and
+  easy to mistake for a bug.
+  """
+  @spec holds_block_markup?(Tree.t(), [Tree.id()]) :: boolean
+  # Short-circuits on the first block-ish tag rather than walking every subtree.
+  def holds_block_markup?(_tree, []), do: false
+
+  def holds_block_markup?(tree, [id | rest]) do
+    block_tag?(Tree.tag(tree, id)) or
+      holds_block_markup?(tree, Tree.children(tree, id)) or
+      holds_block_markup?(tree, rest)
+  end
+
+  defp block_tag?(nil), do: false
+  defp block_tag?(tag), do: Enum.any?(@div_to_p_prefixes, &String.starts_with?(tag, &1))
 
   defp wrap_loose_text(tree, div) do
     tree =

@@ -12,7 +12,15 @@ defmodule Chushutsu.Serialize.Text do
   alias Chushutsu.{Settings, Text, Tree}
 
   @heading_levels ~w(1 2 3 4 5 6)
+
+  # Resolved at compile time. These are consulted once per element in the render
+  # walk, and calling the Settings functions there rebuilt the lists every time,
+  # which also forced `in` to compile down to `lists:member/2`.
   @inline_formattable Settings.inline_formattable()
+  @inline_consuming Settings.inline_consuming()
+  @newline_elems Settings.newline_elems()
+  @special_formatting Settings.special_formatting()
+  @hi_formatting Settings.hi_formatting()
 
   # Characters that already separate content, so no extra space is needed.
   @separators [" ", "\n", "|", ""]
@@ -88,7 +96,7 @@ defmodule Chushutsu.Serialize.Text do
   # A block element starts on its own line rather than being mashed onto
   # whatever loose text preceded it.
   defp block_leading_newline(tag, acc, in_cell, in_item) do
-    if tag in Settings.newline_elems() and not in_cell and not in_item and
+    if tag in @newline_elems and not in_cell and not in_item and
          last_char(acc) not in @separators,
        do: ["\n" | acc],
        else: acc
@@ -134,7 +142,7 @@ defmodule Chushutsu.Serialize.Text do
       tag == "graphic" ->
         {:cont, emit_image(tree, id, acc, formatting?, in_cell, in_item)}
 
-      tag in Settings.newline_elems() ->
+      tag in @newline_elems ->
         {:cont, emit_empty_block(tree, id, tag, acc, in_cell)}
 
       tag not in ["cell", "item"] ->
@@ -183,7 +191,7 @@ defmodule Chushutsu.Serialize.Text do
 
   defp separator(tree, id, tag, acc, formatting?, in_cell, in_item, last_in_item) do
     cond do
-      tag in Settings.newline_elems() and not in_cell and not in_item ->
+      tag in @newline_elems and not in_cell and not in_item ->
         [if(formatting? and tag != "row", do: "\n␤\n", else: "\n") | acc]
 
       tag == "cell" ->
@@ -193,7 +201,7 @@ defmodule Chushutsu.Serialize.Text do
         # separate flattened blocks inside a cell instead of mashing them
         [" " | acc]
 
-      tag not in Settings.special_formatting() and not last_in_item and
+      tag not in @special_formatting and not last_in_item and
           not last_element_in_cell?(tree, id) ->
         [" " | acc]
 
@@ -253,7 +261,7 @@ defmodule Chushutsu.Serialize.Text do
   end
 
   defp apply_emphasis(text, rend) do
-    case Map.get(Settings.hi_formatting(), rend || "") do
+    case Map.get(@hi_formatting, rend || "") do
       nil -> text
       "`" -> md_code(text)
       marker -> md_wrap(text, marker)
@@ -322,7 +330,7 @@ defmodule Chushutsu.Serialize.Text do
   end
 
   defp consumes_inline_children?(tree, id),
-    do: Tree.tag(tree, id) in Settings.inline_consuming() and Tree.children(tree, id) != []
+    do: Tree.tag(tree, id) in @inline_consuming and Tree.children(tree, id) != []
 
   # ## Markdown pieces -----------------------------------------------------
 
@@ -484,7 +492,7 @@ defmodule Chushutsu.Serialize.Text do
   defp collapse_emphasis(tree, id, active) do
     {tree, active} =
       if Tree.tag(tree, id) == "hi" do
-        here = Map.get(Settings.hi_formatting(), Tree.attr(tree, id, "rend") || "")
+        here = Map.get(@hi_formatting, Tree.attr(tree, id, "rend") || "")
         active = if here, do: MapSet.put(active, here), else: active
         {absorb_nested_emphasis(tree, id, active), active}
       else
@@ -499,7 +507,7 @@ defmodule Chushutsu.Serialize.Text do
          true <- Text.trim(Tree.text(tree, id)) == "",
          true <- Tree.tag(tree, child) == "hi",
          true <- Text.trim(Tree.tail(tree, child)) == "",
-         true <- Map.get(Settings.hi_formatting(), Tree.attr(tree, child, "rend") || "") in active do
+         true <- Map.get(@hi_formatting, Tree.attr(tree, child, "rend") || "") in active do
       tree =
         tree
         |> Tree.put_text(id, (Tree.text(tree, id) || "") <> (Tree.text(tree, child) || ""))
@@ -516,7 +524,7 @@ defmodule Chushutsu.Serialize.Text do
     # code content is verbatim, so its whole subtree is skipped
     if Tree.tag(tree, id) == "code" or
          (Tree.tag(tree, id) == "hi" and
-            Map.get(Settings.hi_formatting(), Tree.attr(tree, id, "rend") || "") == "`") do
+            Map.get(@hi_formatting, Tree.attr(tree, id, "rend") || "") == "`") do
       tree
     else
       tree = if Tree.text(tree, id), do: Tree.put_text(tree, id, convert_math(Tree.text(tree, id))), else: tree

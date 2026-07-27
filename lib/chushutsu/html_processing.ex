@@ -308,10 +308,19 @@ defmodule Chushutsu.HtmlProcessing do
     * `:preserve_spaces` — skip whitespace collapsing
   """
   @spec handle_textnode(Tree.t(), Tree.id(), Options.t(), keyword) :: {Tree.t(), Tree.id() | nil}
-  def handle_textnode(tree, id, options, opts \\ []) do
-    comments_fix = Keyword.get(opts, :comments_fix, true)
-    preserve_spaces = Keyword.get(opts, :preserve_spaces, false)
+  def handle_textnode(tree, id, options), do: do_handle_textnode(tree, id, options, true, false)
 
+  def handle_textnode(tree, id, options, opts) do
+    do_handle_textnode(
+      tree,
+      id,
+      options,
+      Keyword.get(opts, :comments_fix, true),
+      Keyword.get(opts, :preserve_spaces, false)
+    )
+  end
+
+  defp do_handle_textnode(tree, id, options, comments_fix, preserve_spaces) do
     cond do
       Tree.tag(tree, id) == "graphic" and image_element?(tree, id) ->
         {tree, id}

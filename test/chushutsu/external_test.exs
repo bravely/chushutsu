@@ -112,6 +112,44 @@ defmodule Chushutsu.ExternalTest do
     end
   end
 
+  describe "Readability.holds_block_markup?/2" do
+    # Upstream regex-tests the serialized children against
+    # `<(?:a|blockquote|dl|div|img|ol|p|pre|table|ul)`, which has no word
+    # boundary. These cases pin that behaviour so it is not "corrected" later.
+    defp block_markup?(body) do
+      {tree, root} = parse(body)
+      div = Tree.find(tree, root, "div")
+      Readability.holds_block_markup?(tree, Tree.children(tree, div))
+    end
+
+    test "detects a block child" do
+      assert block_markup?("<div><p>x</p></div>")
+      assert block_markup?("<div><table><tr><td>x</td></tr></table></div>")
+    end
+
+    test "detects a block descendant, not just a direct child" do
+      assert block_markup?("<div><span><em><p>deep</p></em></span></div>")
+    end
+
+    test "reports nothing for inline-only content" do
+      refute block_markup?("<div><span>x</span> <em>y</em></div>")
+      refute block_markup?("<div>just text</div>")
+    end
+
+    test "matches tags that merely start with a listed name" do
+      # `<a` also matches `<article`/`<aside`, and `<p` matches `<pre` — the
+      # upstream pattern is a prefix test, not a whole-tag one
+      assert block_markup?("<div><article>x</article></div>")
+      assert block_markup?("<div><aside>x</aside></div>")
+      assert block_markup?("<div><pre>x</pre></div>")
+    end
+
+    test "text that looks like markup cannot trigger a match" do
+      # serialization escaped `<`, so prose was never able to match
+      refute block_markup?("<div><span>compare i&lt;p and b&gt;c</span></div>")
+    end
+  end
+
   describe "compare_extraction/7" do
     alias Chushutsu.{External, HtmlProcessing, Options}
 
