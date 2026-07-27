@@ -21,7 +21,10 @@ defmodule Chushutsu.MixProject do
   defp package do
     [
       licenses: ["Apache-2.0"],
-      links: %{"trafilatura" => "https://github.com/adbar/trafilatura"}
+      links: %{"trafilatura" => "https://github.com/adbar/trafilatura"},
+      # NOTICE is not in Hex's default file list, and Apache-2.0 section 4(d)
+      # requires it to travel with every distribution of a derived work.
+      files: ~w(lib priv .formatter.exs mix.exs README.md LICENSE NOTICE)
     ]
   end
 
