@@ -1,0 +1,40 @@
+Chushutsu
+Copyright 2026 Jake Demarest-Mays
+
+This product includes software derived from the following projects.
+
+-------------------------------------------------------------------------------
+trafilatura — https://github.com/adbar/trafilatura
+Copyright Adrien Barbaresi and contributors
+Licensed under the Apache License, Version 2.0
+
+Chushutsu is a port of trafilatura's extraction pipeline: the content and
+boilerplate selector vocabulary, the extraction cascade, the tag conversion and
+serialization rules, and the tuned thresholds throughout.
+
+-------------------------------------------------------------------------------
+readability-lxml — https://github.com/buriy/python-readability
+A Python port of a Ruby port of arc90's Readability project.
+Licensed under the Apache License, Version 2.0
+
+lib/chushutsu/external/readability.ex is derived from trafilatura's fork of
+readability-lxml.
+
+-------------------------------------------------------------------------------
+jusText — https://github.com/miso-belica/jusText
+Copyright (c) 2011 Jan Pomikalek
+Licensed under the BSD 2-Clause License
+
+lib/chushutsu/external/justext.ex is a port of the jusText classifier.
+priv/justext_stoplists.json.gz contains the jusText stopword lists unmodified.
+
+-------------------------------------------------------------------------------
+go-trafilatura — https://github.com/markusmobius/go-trafilatura
+Copyright (C) 2021 Markus Mobius
+Licensed under the Apache License, Version 2.0
+
+bench/comparison.json contains the annotated corpus metadata used for accuracy
+evaluation, converted from that project's Go source. The annotated HTML corpus
+itself is not distributed here; its sources are credited in go-trafilatura as
+the BBAW collection (Adrien Barbaresi, Lukas Kozmus), Polish news annotations by
+tsolewski, and German news sites courtesy of Jan Oliver Rüdiger.
